@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-05-04
+
+### Added
+- Documented the `debug` config flag for opt-in file diagnostics under the runtime-created `debug/` directory with terminal debug output kept disabled.
+- Added regression coverage for config store isolation, pending diff preview safety, tool override registration, presets, and thinking label rendering.
+
+### Changed
+- Scoped projected pending edit and write previews to the active workspace before reading files, with clear fallback notices when previews cannot be resolved safely.
+- Shared ANSI sanitization and width-safety helpers across diff and user message rendering for more consistent narrow-pane output.
+
+### Fixed
+- Hardened pending write metadata tracking so preview and execution state do not leak across tool call lifecycles.
+- Improved tool override preview reads and write state handling for safer partial-render updates.
+
 ## [0.3.5] - 2026-04-27
 
 ### Changed
