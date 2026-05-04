@@ -60,13 +60,14 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
+		const builtInMetadata = builtInTool as unknown as RegisteredToolLike;
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
-		assert.equal(registeredTool.promptSnippet, builtInTool.promptSnippet);
+		assert.equal(registeredTool.promptSnippet, builtInMetadata.promptSnippet);
 	}
 
-	assert.deepEqual(byName.get("read")?.promptGuidelines, builtInTools.read.promptGuidelines);
-	assert.deepEqual(byName.get("edit")?.promptGuidelines, builtInTools.edit.promptGuidelines);
-	assert.deepEqual(byName.get("write")?.promptGuidelines, builtInTools.write.promptGuidelines);
+	assert.deepEqual(byName.get("read")?.promptGuidelines, (builtInTools.read as unknown as RegisteredToolLike).promptGuidelines);
+	assert.deepEqual(byName.get("edit")?.promptGuidelines, (builtInTools.edit as unknown as RegisteredToolLike).promptGuidelines);
+	assert.deepEqual(byName.get("write")?.promptGuidelines, (builtInTools.write as unknown as RegisteredToolLike).promptGuidelines);
 	assert.equal(byName.get("grep")?.promptGuidelines, undefined);
 	assert.equal(byName.get("find")?.promptGuidelines, undefined);
 	assert.equal(byName.get("ls")?.promptGuidelines, undefined);

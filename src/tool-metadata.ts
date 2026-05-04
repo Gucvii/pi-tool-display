@@ -3,11 +3,6 @@ export interface PromptMetadata {
 	promptGuidelines?: string[];
 }
 
-interface PromptMetadataSource {
-	promptSnippet?: string;
-	promptGuidelines?: string[];
-}
-
 const MCP_DESCRIPTION_PATTERN = /\bmcp\b/i;
 const MAX_PROMPT_SNIPPET_LENGTH = 120;
 
@@ -52,13 +47,14 @@ export function buildPromptSnippetFromDescription(description: string | undefine
 	return trimPromptSnippet(withoutSentencePunctuation || base);
 }
 
-export function extractPromptMetadata(tool: PromptMetadataSource): PromptMetadata {
+export function extractPromptMetadata(tool: unknown): PromptMetadata {
+	const source = toRecord(tool);
 	const promptSnippet =
-		typeof tool.promptSnippet === "string" && tool.promptSnippet.trim().length > 0
-			? tool.promptSnippet
+		typeof source.promptSnippet === "string" && source.promptSnippet.trim().length > 0
+			? source.promptSnippet
 			: undefined;
-	const promptGuidelines = Array.isArray(tool.promptGuidelines)
-		? tool.promptGuidelines.filter(
+	const promptGuidelines = Array.isArray(source.promptGuidelines)
+		? source.promptGuidelines.filter(
 				(guideline): guideline is string =>
 					typeof guideline === "string" && guideline.trim().length > 0,
 			)

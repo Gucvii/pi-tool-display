@@ -1,3 +1,5 @@
+import { pluralize } from "./render-utils.js";
+
 export interface WidthMeasurementOps {
 	measure(text: string): number;
 	truncate(text: string, maxWidth: number): string;
@@ -6,10 +8,6 @@ export interface WidthMeasurementOps {
 export interface CollapsedDiffHintOptions {
 	remainingLines: number;
 	hiddenHunks: number;
-}
-
-function pluralize(count: number, singular: string, plural = `${singular}s`): string {
-	return count === 1 ? singular : plural;
 }
 
 function normalizeWidth(width: number): number {

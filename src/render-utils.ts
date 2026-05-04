@@ -1,4 +1,7 @@
 import { homedir } from "node:os";
+import { sanitizeAnsiForThemedOutput } from "./ansi-utils.js";
+
+export { sanitizeAnsiForThemedOutput };
 
 interface TextLikeContent {
   type: string;
@@ -45,9 +48,6 @@ interface CompactOutputOptions {
   maxCollapsedConsecutiveEmptyLines?: number;
 }
 
-const ANSI_SGR_PATTERN = /\x1b\[([0-9;]*)m/g;
-const STYLE_RESET_PARAMS = [39, 22, 23, 24, 25, 27, 28, 29, 59] as const;
-
 function trimTrailingEmptyLines(lines: string[]): string[] {
   const next = [...lines];
   while (next.length > 0 && next[next.length - 1]?.trim().length === 0) {
@@ -83,57 +83,6 @@ function collapseConsecutiveEmptyLines(
   return compacted;
 }
 
-function toSgrParams(rawParams: string): number[] {
-  if (!rawParams.trim()) {
-    return [0];
-  }
-
-  const parsed = rawParams
-    .split(";")
-    .map((token) => Number.parseInt(token, 10))
-    .filter((value) => Number.isFinite(value));
-
-  return parsed.length > 0 ? parsed : [];
-}
-
-function sanitizeSgrParams(params: number[]): number[] {
-  const sanitized: number[] = [];
-
-  for (let index = 0; index < params.length; index++) {
-    const param = params[index] ?? 0;
-
-    if (param === 0) {
-      sanitized.push(...STYLE_RESET_PARAMS);
-      continue;
-    }
-
-    if (param === 49) {
-      continue;
-    }
-
-    if ((param >= 40 && param <= 47) || (param >= 100 && param <= 107)) {
-      continue;
-    }
-
-    if (param === 48) {
-      const colorMode = params[index + 1];
-      if (colorMode === 5) {
-        index += 2;
-        continue;
-      }
-      if (colorMode === 2) {
-        index += 4;
-        continue;
-      }
-      continue;
-    }
-
-    sanitized.push(param);
-  }
-
-  return sanitized;
-}
-
 export function shortenPath(inputPath: string | undefined): string {
   if (!inputPath) {
     return "";
@@ -165,26 +114,6 @@ export function splitLines(text: string): string[] {
     .replace(/\r/g, "")
     .split("\n")
     .map((line) => line.replace(/\t/g, "    "));
-}
-
-export function sanitizeAnsiForThemedOutput(text: string): string {
-  if (!text || !text.includes("\x1b[")) {
-    return text;
-  }
-
-  return text.replace(ANSI_SGR_PATTERN, (_sequence, rawParams: string) => {
-    const parsed = toSgrParams(rawParams);
-    if (parsed.length === 0) {
-      return "";
-    }
-
-    const sanitized = sanitizeSgrParams(parsed);
-    if (sanitized.length === 0) {
-      return "";
-    }
-
-    return `\x1b[${sanitized.join(";")}m`;
-  });
 }
 
 export function compactOutputLines(

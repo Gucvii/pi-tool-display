@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { visibleWidth } from "@mariozechner/pi-tui";
 import {
   countWriteContentLines,
   getWriteContentSizeBytes,
@@ -274,6 +275,37 @@ test("native user message renderer inserts one blank spacer line before the box"
 
   assert.equal(rendered[0], "");
   assert.match(rendered[1] ?? "", /^╭/);
+});
+
+test("native user message renderer wraps body at the padded content width", () => {
+  const contentWidth = 16;
+  const totalWidth = contentWidth + 4;
+  const message = `${"X".repeat(contentWidth)}YZ`;
+  const requestedWidths: number[] = [];
+  const prototype: PatchableUserMessagePrototype = {
+    render: (width: number): string[] => {
+      requestedWidths.push(width);
+      const lines: string[] = [];
+      for (let index = 0; index < message.length; index += width) {
+        lines.push(message.slice(index, index + width));
+      }
+      return lines;
+    },
+  };
+
+  patchNativeUserMessagePrototype(prototype, () => undefined, () => true);
+
+  const rendered = prototype.render(totalWidth);
+  const borderedRows = rendered.filter((line) =>
+    line.startsWith("│") || line.startsWith("╭") || line.startsWith("╰"),
+  );
+
+  assert.equal(requestedWidths[0], contentWidth);
+  assert.ok(
+    rendered.some((line) => line.includes("YZ")),
+    "tail content should wrap instead of being clipped",
+  );
+  assert.ok(borderedRows.every((line) => visibleWidth(line) === totalWidth));
 });
 
 test("user message blank ansi lines are cleared before wrapping", () => {

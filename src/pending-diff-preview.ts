@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 
 export interface PendingDiffPreviewData {
   filePath: string;
@@ -29,6 +29,8 @@ type FileReadResult = {
   content?: string;
   error?: string;
 };
+
+const MAX_PREVIEW_READ_BYTES = 1_000_000;
 
 type ProjectedEditResult =
   | {
@@ -64,21 +66,87 @@ function resolvePreviewPath(cwd: string, rawPath: string): string {
   return isAbsolute(expandedHome) ? expandedHome : resolve(cwd, expandedHome);
 }
 
-function readUtf8File(resolvedPath: string): FileReadResult {
+function isWithinWorkspace(workspacePath: string, targetPath: string): boolean {
+  const relativePath = relative(workspacePath, targetPath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
+function safeRealpath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+function resolveWorkspaceReadPath(cwd: string, rawPath: string): { resolvedPath: string; error?: string } {
+  const workspacePath = safeRealpath(cwd);
+  const resolvedPath = resolvePreviewPath(cwd, rawPath);
+
+  if (!isWithinWorkspace(workspacePath, resolvedPath)) {
+    return {
+      resolvedPath,
+      error: "Preview unavailable because the target path is outside the current workspace.",
+    };
+  }
+
   if (!existsSync(resolvedPath)) {
+    return { resolvedPath };
+  }
+
+  try {
+    const targetPath = realpathSync(resolvedPath);
+    if (!isWithinWorkspace(workspacePath, targetPath)) {
+      return {
+        resolvedPath,
+        error: "Preview unavailable because the target path resolves outside the current workspace.",
+      };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      resolvedPath,
+      error: `Unable to resolve '${resolvedPath}': ${message}`,
+    };
+  }
+
+  return { resolvedPath };
+}
+
+export function readWorkspaceUtf8File(cwd: string, rawPath: string): FileReadResult {
+  const safePath = resolveWorkspaceReadPath(cwd, rawPath);
+  if (safePath.error) {
+    return { exists: false, error: safePath.error };
+  }
+
+  if (!existsSync(safePath.resolvedPath)) {
     return { exists: false };
   }
 
   try {
+    const stats = statSync(safePath.resolvedPath);
+    if (!stats.isFile()) {
+      return {
+        exists: true,
+        error: `Preview unavailable because '${safePath.resolvedPath}' is not a regular file.`,
+      };
+    }
+    if (stats.size > MAX_PREVIEW_READ_BYTES) {
+      return {
+        exists: true,
+        error: `Preview unavailable because '${safePath.resolvedPath}' exceeds the ${MAX_PREVIEW_READ_BYTES} byte preview read limit.`,
+      };
+    }
+
     return {
       exists: true,
-      content: readFileSync(resolvedPath, "utf8"),
+      content: readFileSync(safePath.resolvedPath, "utf8"),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
       exists: true,
-      error: `Unable to read '${resolvedPath}': ${message}`,
+      error: `Unable to read '${safePath.resolvedPath}': ${message}`,
     };
   }
 }
@@ -247,7 +315,7 @@ export function buildPendingWritePreviewData(input: unknown, cwd: string): Pendi
     return undefined;
   }
 
-  const existing = readUtf8File(resolvePreviewPath(cwd, filePath));
+  const existing = readWorkspaceUtf8File(cwd, filePath);
   return {
     filePath,
     previousContent: existing.content,
@@ -264,7 +332,7 @@ export function buildPendingEditPreviewData(input: unknown, cwd: string): Pendin
     return undefined;
   }
 
-  const existing = readUtf8File(resolvePreviewPath(cwd, filePath));
+  const existing = readWorkspaceUtf8File(cwd, filePath);
   if (existing.error) {
     return {
       filePath,

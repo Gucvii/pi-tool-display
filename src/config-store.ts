@@ -1,6 +1,6 @@
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	BUILT_IN_TOOL_OVERRIDE_NAMES,
 	BASH_OUTPUT_MODES,
@@ -15,6 +15,7 @@ import {
 	type ToolDisplayConfig,
 	type ToolOverrideOwnership,
 } from "./types.js";
+import { toRecord } from "./tool-metadata.js";
 
 const CONFIG_DIR = join(getAgentDir(), "extensions", "pi-tool-display");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
@@ -35,13 +36,6 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 
 function toBoolean(value: unknown, fallback: boolean): boolean {
 	return typeof value === "boolean" ? value : fallback;
-}
-
-function toRecord(value: unknown): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return {};
-	}
-	return value as Record<string, unknown>;
 }
 
 function toReadOutputMode(value: unknown): ToolDisplayConfig["readOutputMode"] {
@@ -147,32 +141,32 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 	};
 }
 
-export function loadToolDisplayConfig(): ConfigLoadResult {
-	if (!existsSync(CONFIG_FILE)) {
+export function loadToolDisplayConfig(configFile = CONFIG_FILE): ConfigLoadResult {
+	if (!existsSync(configFile)) {
 		return { config: cloneDefaultConfig() };
 	}
 
 	try {
-		const rawText = readFileSync(CONFIG_FILE, "utf-8");
+		const rawText = readFileSync(configFile, "utf-8");
 		const rawConfig = JSON.parse(rawText) as unknown;
 		return { config: normalizeToolDisplayConfig(rawConfig) };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
 			config: cloneDefaultConfig(),
-			error: `Failed to parse ${CONFIG_FILE}: ${message}`,
+			error: `Failed to parse ${configFile}: ${message}`,
 		};
 	}
 }
 
-export function saveToolDisplayConfig(config: ToolDisplayConfig): ConfigSaveResult {
+export function saveToolDisplayConfig(config: ToolDisplayConfig, configFile = CONFIG_FILE): ConfigSaveResult {
 	const normalized = normalizeToolDisplayConfig(config);
-	const tmpFile = `${CONFIG_FILE}.tmp`;
+	const tmpFile = `${configFile}.tmp`;
 
 	try {
-		mkdirSync(CONFIG_DIR, { recursive: true });
+		mkdirSync(dirname(configFile), { recursive: true });
 		writeFileSync(tmpFile, `${JSON.stringify(normalized, null, 2)}\n`, "utf-8");
-		renameSync(tmpFile, CONFIG_FILE);
+		renameSync(tmpFile, configFile);
 		return { success: true };
 	} catch (error) {
 		try {
@@ -185,7 +179,7 @@ export function saveToolDisplayConfig(config: ToolDisplayConfig): ConfigSaveResu
 		const message = error instanceof Error ? error.message : String(error);
 		return {
 			success: false,
-			error: `Failed to save ${CONFIG_FILE}: ${message}`,
+			error: `Failed to save ${configFile}: ${message}`,
 		};
 	}
 }

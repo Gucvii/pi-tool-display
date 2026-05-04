@@ -1,5 +1,6 @@
 import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@mariozechner/pi-tui";
 import { getLanguageFromPath, highlightCode, type EditToolDetails } from "@mariozechner/pi-coding-agent";
+import { ANSI_SGR_PATTERN, STYLE_RESET_PARAMS, toSgrParams } from "./ansi-utils.js";
 import {
 	buildCollapsedDiffHintText,
 	clampRenderedLineToWidth,
@@ -112,8 +113,6 @@ const REMOVE_INLINE_EMPHASIS_MIX_RATIO = 0.26;
 const ADDITION_TINT_TARGET: RgbColor = { r: 84, g: 190, b: 118 };
 const DELETION_TINT_TARGET: RgbColor = { r: 232, g: 95, b: 122 };
 const ANSI_BG_RESET = "\x1b[49m";
-const ANSI_SGR_PATTERN = /\x1b\[([0-9;]*)m/g;
-const STYLE_RESET_PARAMS = [39, 22, 23, 24, 25, 27, 28, 29, 59] as const;
 const DIFF_WIDTH_OPS = {
 	measure: visibleWidth,
 	truncate: (text: string, maxWidth: number): string => truncateToWidth(text, maxWidth, ""),
@@ -133,19 +132,6 @@ function normalizeCodeWhitespace(text: string): string {
 
 function emphasis(theme: DiffTheme, text: string): string {
 	return typeof theme.bold === "function" ? theme.bold(text) : text;
-}
-
-function toSgrParams(rawParams: string): number[] {
-	if (!rawParams.trim()) {
-		return [0];
-	}
-
-	const parsed = rawParams
-		.split(";")
-		.map((token) => Number.parseInt(token, 10))
-		.filter((value) => Number.isFinite(value));
-
-	return parsed.length > 0 ? parsed : [];
 }
 
 function isFiniteSgrParam(value: number | undefined): value is number {

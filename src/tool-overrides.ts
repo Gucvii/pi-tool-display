@@ -6,6 +6,7 @@ import type {
   GrepToolDetails,
   LsToolDetails,
   ReadToolDetails,
+  ToolDefinition,
   ToolRenderResultOptions,
 } from "@mariozechner/pi-coding-agent";
 import {
@@ -19,10 +20,8 @@ import {
   formatSize,
 } from "@mariozechner/pi-coding-agent";
 import { Container, Spacer, Text } from "@mariozechner/pi-tui";
-import { existsSync, readFileSync } from "node:fs";
 import { renderBashCall } from "./bash-display.js";
-import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { logToolDisplayDebug } from "./debug-logger.js";
 import {
   compactOutputLines,
   countNonEmptyLines,
@@ -38,6 +37,7 @@ import { renderEditDiffResult, renderWriteDiffResult } from "./diff-renderer.js"
 import {
   buildPendingEditPreviewData,
   buildPendingWritePreviewData,
+  readWorkspaceUtf8File,
   type PendingDiffPreviewData,
 } from "./pending-diff-preview.js";
 import {
@@ -71,6 +71,8 @@ interface BuiltInTools {
 
 type ConfigGetter = () => ToolDisplayConfig;
 
+type RuntimeToolDefinition = Record<string, unknown>;
+
 interface RenderTheme {
   fg(color: string, text: string): string;
   bg?(color: string, text: string): string;
@@ -95,7 +97,7 @@ interface ToolRenderContextLike {
   expanded?: boolean;
 }
 
-interface WriteExecutionMeta {
+export interface WriteExecutionMeta {
   previousContent?: string;
   fileExistedBeforeWrite: boolean;
 }
@@ -107,9 +109,19 @@ interface PendingDiffPreviewState {
 
 const builtInToolCache = new Map<string, BuiltInTools>();
 const RTK_COMPACTION_LABEL = "compacted by RTK";
+export const WRITE_EXECUTION_META_LIMIT = 100;
 const WRITE_EXECUTION_META_STATE_KEY = "__piToolDisplayWriteExecutionMeta";
 const EDIT_PENDING_PREVIEW_STATE_KEY = "__piToolDisplayEditPendingPreview";
 const WRITE_PENDING_PREVIEW_STATE_KEY = "__piToolDisplayWritePendingPreview";
+
+function registerRuntimeTool(pi: ExtensionAPI, tool: RuntimeToolDefinition): void {
+  pi.registerTool(tool as unknown as ToolDefinition);
+}
+
+function getToolPrepareArguments(tool: unknown): unknown {
+  const prepareArguments = toRecord(tool).prepareArguments;
+  return typeof prepareArguments === "function" ? prepareArguments : undefined;
+}
 
 function cloneToolParameters<T>(parameters: T, seen = new WeakMap<object, unknown>()): T {
   if (parameters === null || typeof parameters !== "object") {
@@ -158,20 +170,6 @@ function getBuiltInTools(cwd: string): BuiltInTools {
   return tools;
 }
 
-function resolveWriteTargetPath(cwd: string, rawPath: string): string {
-  const trimmed = rawPath.trim();
-  if (!trimmed) {
-    return cwd;
-  }
-
-  const expandedHome =
-    trimmed.startsWith("~/") || trimmed.startsWith("~\\")
-      ? `${homedir()}${trimmed.slice(1)}`
-      : trimmed;
-
-  return isAbsolute(expandedHome) ? expandedHome : resolve(cwd, expandedHome);
-}
-
 function captureExistingWriteContent(
   cwd: string,
   rawPath: unknown,
@@ -180,19 +178,11 @@ function captureExistingWriteContent(
     return { existed: false };
   }
 
-  const resolvedPath = resolveWriteTargetPath(cwd, rawPath);
-  if (!existsSync(resolvedPath)) {
-    return { existed: false };
-  }
-
-  try {
-    return {
-      existed: true,
-      content: readFileSync(resolvedPath, "utf8"),
-    };
-  } catch {
-    return { existed: true };
-  }
+  const existing = readWorkspaceUtf8File(cwd, rawPath);
+  return {
+    existed: existing.exists,
+    content: existing.content,
+  };
 }
 
 function formatExpandHint(theme: RenderTheme): string {
@@ -298,7 +288,30 @@ function toStateCarrier(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
-function getWriteExecutionMeta(
+export function recordWriteExecutionMeta(
+  pendingMetaByToolCallId: Map<string, WriteExecutionMeta>,
+  toolCallId: string,
+  meta: WriteExecutionMeta,
+): void {
+  pendingMetaByToolCallId.delete(toolCallId);
+  pendingMetaByToolCallId.set(toolCallId, meta);
+
+  while (pendingMetaByToolCallId.size > WRITE_EXECUTION_META_LIMIT) {
+    const oldestToolCallId = pendingMetaByToolCallId.keys().next().value;
+    if (oldestToolCallId === undefined) {
+      return;
+    }
+    pendingMetaByToolCallId.delete(oldestToolCallId);
+  }
+}
+
+export function clearWriteExecutionMeta(
+  pendingMetaByToolCallId: Map<string, WriteExecutionMeta>,
+): void {
+  pendingMetaByToolCallId.clear();
+}
+
+export function getWriteExecutionMeta(
   context: ToolRenderContextLike | undefined,
   pendingMetaByToolCallId: Map<string, WriteExecutionMeta>,
 ): WriteExecutionMeta | undefined {
@@ -989,13 +1002,13 @@ export function registerToolDisplayOverrides(
   };
 
   registerIfOwned("read", () => {
-    pi.registerTool({
+    registerRuntimeTool(pi, {
       name: "read",
       label: "read",
       description: bootstrapTools.read.description,
       ...builtInPromptMetadata.read,
       parameters: clonedParameters.read,
-      prepareArguments: bootstrapTools.read.prepareArguments,
+      prepareArguments: getToolPrepareArguments(bootstrapTools.read),
       async execute(toolCallId, params, signal, onUpdate, ctx) {
         return getBuiltInTools(ctx.cwd).read.execute(
           toolCallId,
@@ -1075,13 +1088,13 @@ export function registerToolDisplayOverrides(
   });
 
   registerIfOwned("grep", () => {
-    pi.registerTool({
+    registerRuntimeTool(pi, {
       name: "grep",
     label: "grep",
     description: bootstrapTools.grep.description,
     ...builtInPromptMetadata.grep,
     parameters: clonedParameters.grep,
-    prepareArguments: bootstrapTools.grep.prepareArguments,
+    prepareArguments: getToolPrepareArguments(bootstrapTools.grep),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return getBuiltInTools(ctx.cwd).grep.execute(
         toolCallId,
@@ -1115,13 +1128,13 @@ export function registerToolDisplayOverrides(
   });
 
   registerIfOwned("find", () => {
-    pi.registerTool({
+    registerRuntimeTool(pi, {
       name: "find",
     label: "find",
     description: bootstrapTools.find.description,
     ...builtInPromptMetadata.find,
     parameters: clonedParameters.find,
-    prepareArguments: bootstrapTools.find.prepareArguments,
+    prepareArguments: getToolPrepareArguments(bootstrapTools.find),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return getBuiltInTools(ctx.cwd).find.execute(
         toolCallId,
@@ -1153,13 +1166,13 @@ export function registerToolDisplayOverrides(
   });
 
   registerIfOwned("ls", () => {
-    pi.registerTool({
+    registerRuntimeTool(pi, {
       name: "ls",
     label: "ls",
     description: bootstrapTools.ls.description,
     ...builtInPromptMetadata.ls,
     parameters: clonedParameters.ls,
-    prepareArguments: bootstrapTools.ls.prepareArguments,
+    prepareArguments: getToolPrepareArguments(bootstrapTools.ls),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return getBuiltInTools(ctx.cwd).ls.execute(
         toolCallId,
@@ -1192,14 +1205,14 @@ export function registerToolDisplayOverrides(
   });
 
   registerIfOwned("edit", () => {
-    pi.registerTool({
+    registerRuntimeTool(pi, {
       name: "edit",
     label: "edit",
     description: bootstrapTools.edit.description,
     ...builtInPromptMetadata.edit,
     parameters: clonedParameters.edit,
     renderShell: "default",
-    prepareArguments: bootstrapTools.edit.prepareArguments,
+    prepareArguments: getToolPrepareArguments(bootstrapTools.edit),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return getBuiltInTools(ctx.cwd).edit.execute(
         toolCallId,
@@ -1255,16 +1268,16 @@ export function registerToolDisplayOverrides(
   });
 
   registerIfOwned("write", () => {
-    pi.registerTool({
+    registerRuntimeTool(pi, {
       name: "write",
     label: "write",
     description: bootstrapTools.write.description,
     ...builtInPromptMetadata.write,
     parameters: clonedParameters.write,
-    prepareArguments: bootstrapTools.write.prepareArguments,
+    prepareArguments: getToolPrepareArguments(bootstrapTools.write),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const previous = captureExistingWriteContent(ctx.cwd, params.path);
-      writeExecutionMetaByToolCallId.set(toolCallId, {
+      recordWriteExecutionMeta(writeExecutionMetaByToolCallId, toolCallId, {
         fileExistedBeforeWrite: previous.existed,
         previousContent: previous.content,
       });
@@ -1340,13 +1353,13 @@ export function registerToolDisplayOverrides(
   });
 
   registerIfOwned("bash", () => {
-    pi.registerTool({
+    registerRuntimeTool(pi, {
       name: "bash",
     label: "bash",
     description: bootstrapTools.bash.description,
     ...builtInPromptMetadata.bash,
     parameters: clonedParameters.bash,
-    prepareArguments: bootstrapTools.bash.prepareArguments,
+    prepareArguments: getToolPrepareArguments(bootstrapTools.bash),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return getBuiltInTools(ctx.cwd).bash.execute(
         toolCallId,
@@ -1445,7 +1458,8 @@ export function registerToolDisplayOverrides(
     let allTools: unknown[] = [];
     try {
       allTools = pi.getAllTools();
-    } catch {
+    } catch (error) {
+      logToolDisplayDebug("MCP tool override discovery failed.", error);
       return;
     }
 
@@ -1490,7 +1504,7 @@ export function registerToolDisplayOverrides(
               ),
             };
 
-      pi.registerTool({
+      registerRuntimeTool(pi, {
         name: toolName,
         label: toolLabel,
         description: toolDescription,
@@ -1515,9 +1529,11 @@ export function registerToolDisplayOverrides(
   };
 
   pi.on("session_start", async () => {
+    clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
     registerMcpToolOverrides();
   });
   pi.on("before_agent_start", async () => {
+    clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
     registerMcpToolOverrides();
   });
 }

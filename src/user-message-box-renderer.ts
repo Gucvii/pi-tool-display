@@ -41,7 +41,7 @@ const MIN_BORDER_WIDTH = 8;
 const TITLE_TEXT = " user ";
 const CONTENT_HORIZONTAL_PADDING_COLUMNS = 1;
 const USER_MESSAGE_TOP_MARGIN_LINES = 1;
-const USER_MESSAGE_PATCH_VERSION = 6;
+const USER_MESSAGE_PATCH_VERSION = 7;
 const MAX_USER_MESSAGE_MARKDOWN_TEXT_LENGTH = 100_000;
 const MAX_USER_MESSAGE_MARKDOWN_LINE_COUNT = 2_000;
 
@@ -103,16 +103,20 @@ function buildBottomBorder(
   return colorUserBackground(theme, row);
 }
 
+function getUserMessageContentWidth(totalWidth: number): number {
+  return Math.max(
+    1,
+    totalWidth - 2 - CONTENT_HORIZONTAL_PADDING_COLUMNS * 2,
+  );
+}
+
 function wrapContentLine(
   line: string,
   totalWidth: number,
   theme: UserMessageTheme | undefined,
 ): string {
   const sidePadding = " ".repeat(CONTENT_HORIZONTAL_PADDING_COLUMNS);
-  const innerWidth = Math.max(
-    1,
-    totalWidth - 2 - CONTENT_HORIZONTAL_PADDING_COLUMNS * 2,
-  );
+  const innerWidth = getUserMessageContentWidth(totalWidth);
   const normalizedLine = normalizeUserMessageContentLine(line);
   const content = truncateToWidth(normalizedLine, innerWidth, "", true);
   const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(content)));
@@ -281,7 +285,7 @@ export function patchNativeUserMessagePrototype(
           return originalRender.call(this, safeWidth);
         }
 
-        const innerWidth = Math.max(1, safeWidth - 2);
+        const innerWidth = getUserMessageContentWidth(safeWidth);
         const lines = renderUserMessageBodyLines(this, innerWidth, originalRender);
         const contentLines = normalizeUserMessageContentLines(lines);
         const paddedContentLines = addUserMessageVerticalPadding(

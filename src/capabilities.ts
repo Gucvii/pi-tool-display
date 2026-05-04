@@ -1,6 +1,7 @@
 import { getAgentDir, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { logToolDisplayDebug } from "./debug-logger.js";
 import { isMcpToolCandidate } from "./tool-metadata.js";
 import type { ToolDisplayConfig } from "./types.js";
 
@@ -13,7 +14,8 @@ function hasMcpTooling(pi: ExtensionAPI): boolean {
 	try {
 		const allTools = pi.getAllTools();
 		return allTools.some((tool) => isMcpToolCandidate(tool));
-	} catch {
+	} catch (error) {
+		logToolDisplayDebug("MCP capability detection failed.", error);
 		return false;
 	}
 }
@@ -22,7 +24,8 @@ function hasRtkCommand(pi: ExtensionAPI): boolean {
 	try {
 		const commands = pi.getCommands();
 		return commands.some((command) => command.name === "rtk" || command.name.startsWith("rtk-"));
-	} catch {
+	} catch (error) {
+		logToolDisplayDebug("RTK command capability detection failed.", error);
 		return false;
 	}
 }
@@ -35,7 +38,8 @@ function hasRtkExtensionPath(cwd: string): boolean {
 			if (existsSync(candidate)) {
 				return true;
 			}
-		} catch {
+		} catch (error) {
+			logToolDisplayDebug(`RTK capability path probe failed for ${candidate}.`, error);
 			// Ignore filesystem errors and continue probing other candidates.
 		}
 	}

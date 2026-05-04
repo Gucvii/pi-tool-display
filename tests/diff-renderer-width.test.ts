@@ -5,7 +5,7 @@ import { buildDiffSummaryText, resolveDiffPresentationMode } from "../src/diff-p
 import { renderEditDiffResult, renderWriteDiffResult } from "../src/diff-renderer.ts";
 
 const diffConfig = {
-	diffViewMode: "auto",
+	diffViewMode: "auto" as const,
 	diffSplitMinWidth: 80,
 	diffCollapsedLines: 24,
 	diffWordWrap: true,
