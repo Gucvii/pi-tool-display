@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-22
+
+### Added
+- Added the `./tool-display-api-consumer` subpath export so other extensions can decorate tool definitions through the runtime tool-display API or queue decorations until `pi-tool-display` is loaded.
+- Added hashline-anchor-aware diff rendering so read/edit anchor lines can display their `LINE#HASH` labels in the diff gutter.
+
+### Changed
+- Deferred built-in tool override registration until the built-in owner is available and refreshed cached built-in tools on session lifecycle changes.
+- Redacted secret-like debug payload values and switched debug writes to asynchronous buffered file logging.
+
 ## [0.3.6] - 2026-05-04
 
 ### Added

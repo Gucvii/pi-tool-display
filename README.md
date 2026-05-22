@@ -21,11 +21,13 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 - **Adaptive edit/write diffs** with split or unified layouts, syntax highlighting, inline emphasis, and narrow-pane width clamping
 - **Workspace-scoped projected pending edit/write previews** that show `pending edit`, `pending overwrite`, and `pending create` diffs while partial tool calls are still streaming
 - **Progressive collapsed diff hints** that shorten automatically on small terminal widths instead of overflowing
+- **Hashline-anchor diff gutters** that preserve `LINE#HASH` labels from anchored read/edit output when those lines are rendered in diffs
 - **Three presets**: `opencode`, `balanced`, and `verbose`
 - **Thinking labels** during streaming and final message rendering, with context sanitization to avoid leaking presentation labels back into future model turns
 - **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
 - **Per-tool ownership toggles** so this extension can coexist with other renderer extensions
 - **Capability-aware settings** that automatically hide MCP and RTK-specific controls when those features are unavailable
+- **Adapter API for renderer consumers** through the `pi-tool-display/tool-display-api-consumer` subpath export
 
 ## Installation
 
@@ -85,6 +87,16 @@ Advanced options remain in `config.json`.
 /tool-display preset balanced         # Apply balanced preset
 /tool-display preset verbose          # Apply verbose preset
 ```
+
+### Tool display adapter API
+
+Other extensions can opt into `pi-tool-display` rendering without directly depending on its load order by importing the consumer helper:
+
+```ts
+import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-tool-display/tool-display-api-consumer";
+```
+
+`decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-tool-display` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools.
 
 ## Presets
 
@@ -204,6 +216,8 @@ Debug logging is disabled by default. Set `debug` to `true` in the extension roo
 `edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. On narrow panes it clamps rendered lines and shortens collapsed hint text so the diff stays readable instead of spilling past the terminal width.
 
 While tool arguments are still streaming, partial `edit` and `write` calls can show projected pending previews. Deterministic edits render as `pending edit` diffs against current file contents, writes render as `pending overwrite` or `pending create`, and unresolved projections show a clear preview notice instead of guessing. Preview file reads are scoped to the active workspace so pending previews avoid reading paths outside the current project.
+
+When diff input includes Pi anchored read lines such as `12#AB:content`, the renderer treats the anchor as line metadata and displays the `LINE#HASH` label in the gutter while keeping the content aligned for split, unified, and compact diff layouts.
 
 ### Write summaries
 
