@@ -2,6 +2,7 @@ export type RuntimeToolDefinition = Record<string, unknown>;
 
 export interface ToolDisplayAdapter {
   kind?: "read" | "edit" | "mcp" | "generic";
+  overrideExistingRenderers?: boolean;
 }
 
 export interface ToolDisplayApi {

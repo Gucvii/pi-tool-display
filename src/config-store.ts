@@ -4,9 +4,12 @@ import { dirname, join } from "node:path";
 import {
 	BUILT_IN_TOOL_OVERRIDE_NAMES,
 	BASH_OUTPUT_MODES,
+	CUSTOM_TOOL_OUTPUT_MODES,
+	CUSTOM_TOOL_OVERRIDE_KINDS,
 	DEFAULT_TOOL_DISPLAY_CONFIG,
 	type ConfigLoadResult,
 	type ConfigSaveResult,
+	type CustomToolOverrideConfig,
 	DIFF_INDICATOR_MODES,
 	DIFF_VIEW_MODES,
 	MCP_OUTPUT_MODES,
@@ -79,10 +82,22 @@ function toDiffIndicatorMode(value: unknown): ToolDisplayConfig["diffIndicatorMo
 		: DEFAULT_TOOL_DISPLAY_CONFIG.diffIndicatorMode;
 }
 
+function cloneCustomToolOverrides(
+	overrides: Record<string, CustomToolOverrideConfig>,
+): Record<string, CustomToolOverrideConfig> {
+	return Object.fromEntries(
+		Object.entries(overrides).map(([toolName, override]) => [
+			toolName,
+			{ ...override },
+		]),
+	);
+}
+
 function cloneDefaultConfig(): ToolDisplayConfig {
 	return {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
 		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		customToolOverrides: cloneCustomToolOverrides(DEFAULT_TOOL_DISPLAY_CONFIG.customToolOverrides),
 	};
 }
 
@@ -127,6 +142,64 @@ function normalizeToolOverrideOwnership(
 	return overrides;
 }
 
+function isBuiltInToolOverrideName(toolName: string): boolean {
+	return (BUILT_IN_TOOL_OVERRIDE_NAMES as readonly string[]).includes(toolName);
+}
+
+function toCustomToolOverrideKind(value: unknown): CustomToolOverrideConfig["kind"] {
+	return CUSTOM_TOOL_OVERRIDE_KINDS.includes(value as CustomToolOverrideConfig["kind"])
+		? (value as CustomToolOverrideConfig["kind"])
+		: "generic";
+}
+
+function toCustomToolOutputMode(value: unknown): CustomToolOverrideConfig["outputMode"] {
+	return CUSTOM_TOOL_OUTPUT_MODES.includes(value as CustomToolOverrideConfig["outputMode"])
+		? (value as CustomToolOverrideConfig["outputMode"])
+		: "summary";
+}
+
+function normalizeCustomToolOverrideEntry(rawEntry: unknown): CustomToolOverrideConfig | undefined {
+	if (typeof rawEntry === "boolean") {
+		return {
+			enabled: rawEntry,
+			kind: "generic",
+			outputMode: "summary",
+		};
+	}
+
+	if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
+		return undefined;
+	}
+
+	const source = toRecord(rawEntry);
+	return {
+		enabled: toBoolean(source.enabled, true),
+		kind: toCustomToolOverrideKind(source.kind),
+		outputMode: toCustomToolOutputMode(source.outputMode),
+	};
+}
+
+function normalizeCustomToolOverrides(rawOverrides: unknown): Record<string, CustomToolOverrideConfig> {
+	const source = toRecord(rawOverrides);
+	const overrides: Record<string, CustomToolOverrideConfig> = {};
+
+	for (const [rawToolName, rawEntry] of Object.entries(source)) {
+		const toolName = rawToolName.trim();
+		if (!toolName || isBuiltInToolOverrideName(toolName)) {
+			continue;
+		}
+
+		const normalized = normalizeCustomToolOverrideEntry(rawEntry);
+		if (!normalized) {
+			continue;
+		}
+
+		overrides[toolName] = normalized;
+	}
+
+	return overrides;
+}
+
 export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 	const source =
 		typeof raw === "object" && raw !== null ? (raw as LegacyToolDisplayConfigSource) : ({} as LegacyToolDisplayConfigSource);
@@ -136,6 +209,7 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 			source.registerToolOverrides,
 			source.registerReadToolOverride,
 		),
+		customToolOverrides: normalizeCustomToolOverrides(source.customToolOverrides),
 		enableNativeUserMessageBox: toBoolean(
 			source.enableNativeUserMessageBox,
 			DEFAULT_TOOL_DISPLAY_CONFIG.enableNativeUserMessageBox,

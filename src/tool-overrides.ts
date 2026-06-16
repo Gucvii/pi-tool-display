@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   BashToolDetails,
   EditToolDetails,
@@ -20,6 +22,7 @@ import {
   formatSize,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { resolvePiAgentDir } from "./agent-dir.js";
 import { renderBashCall } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
@@ -50,8 +53,14 @@ import {
   MCP_PROXY_PROMPT_SNIPPET,
   toRecord,
 } from "./tool-metadata.js";
+import {
+  BUILT_IN_TOOL_OVERRIDE_NAMES,
+  CUSTOM_TOOL_OUTPUT_MODES,
+  CUSTOM_TOOL_OVERRIDE_KINDS,
+} from "./types.js";
 import type {
   BuiltInToolOverrideName,
+  CustomToolOverrideConfig,
   ToolDisplayConfig,
 } from "./types.js";
 import {
@@ -109,6 +118,16 @@ export interface WriteExecutionMeta {
 interface PendingDiffPreviewState {
   key?: string;
   data?: PendingDiffPreviewData;
+}
+
+interface PiSettingsShellConfig {
+  shellPath?: unknown;
+  shellCommandPrefix?: unknown;
+}
+
+interface BashToolOverrideOptions {
+  shellPath?: string;
+  commandPrefix?: string;
 }
 
 const builtInToolCache = new Map<string, BuiltInTools>();
@@ -260,6 +279,28 @@ function clearBuiltInToolCache(): void {
   builtInToolCache.clear();
 }
 
+function getStringSetting(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function loadBashToolOverrideOptions(): BashToolOverrideOptions {
+  const settingsPath = join(resolvePiAgentDir(), "settings.json");
+  if (!existsSync(settingsPath)) {
+    return {};
+  }
+
+  try {
+    const rawSettings = JSON.parse(readFileSync(settingsPath, "utf-8")) as PiSettingsShellConfig;
+    return {
+      shellPath: getStringSetting(rawSettings.shellPath),
+      commandPrefix: getStringSetting(rawSettings.shellCommandPrefix),
+    };
+  } catch (error) {
+    logToolDisplayDebug("Failed to read Pi settings for bash tool overrides.", error);
+    return {};
+  }
+}
+
 function getBuiltInTools(cwd: string): BuiltInTools {
   let tools = builtInToolCache.get(cwd);
   if (!tools) {
@@ -282,7 +323,7 @@ function createLazyBuiltInTools(cwd: string): BuiltInTools {
     get grep() { return get("grep", () => createGrepTool(cwd)); },
     get find() { return get("find", () => createFindTool(cwd)); },
     get ls() { return get("ls", () => createLsTool(cwd)); },
-    get bash() { return get("bash", () => createBashTool(cwd)); },
+    get bash() { return get("bash", () => createBashTool(cwd, loadBashToolOverrideOptions())); },
     get edit() { return get("edit", () => createEditTool(cwd)); },
     get write() { return get("write", () => createWriteTool(cwd)); },
   } as BuiltInTools;
@@ -1136,6 +1177,87 @@ function renderMcpResult(
   return new Text(preview, 0, 0);
 }
 
+function isBuiltInToolName(toolName: string): boolean {
+  return (BUILT_IN_TOOL_OVERRIDE_NAMES as readonly string[]).includes(toolName);
+}
+
+function toCustomToolOverrideKind(value: unknown): CustomToolOverrideConfig["kind"] {
+  return CUSTOM_TOOL_OVERRIDE_KINDS.includes(value as CustomToolOverrideConfig["kind"])
+    ? (value as CustomToolOverrideConfig["kind"])
+    : "generic";
+}
+
+function toCustomToolOutputMode(value: unknown): CustomToolOverrideConfig["outputMode"] {
+  return CUSTOM_TOOL_OUTPUT_MODES.includes(value as CustomToolOverrideConfig["outputMode"])
+    ? (value as CustomToolOverrideConfig["outputMode"])
+    : "summary";
+}
+
+function normalizeRuntimeCustomToolOverride(rawEntry: unknown): CustomToolOverrideConfig | undefined {
+  if (typeof rawEntry === "boolean") {
+    return {
+      enabled: rawEntry,
+      kind: "generic",
+      outputMode: "summary",
+    };
+  }
+
+  if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
+    return undefined;
+  }
+
+  const source = toRecord(rawEntry);
+  return {
+    enabled: typeof source.enabled === "boolean" ? source.enabled : true,
+    kind: toCustomToolOverrideKind(source.kind),
+    outputMode: toCustomToolOutputMode(source.outputMode),
+  };
+}
+
+function getRuntimeCustomToolOverride(
+  toolName: string,
+  config: ToolDisplayConfig,
+): CustomToolOverrideConfig | undefined {
+  if (!toolName || isBuiltInToolName(toolName)) {
+    return undefined;
+  }
+
+  const overrides = toRecord((config as unknown as Record<string, unknown>).customToolOverrides);
+  return normalizeRuntimeCustomToolOverride(overrides[toolName]);
+}
+
+function formatGenericToolCallLine(
+  toolName: string,
+  args: unknown,
+  theme: RenderTheme,
+): Text {
+  const argRecord = toRecord(args);
+  const argCount = Object.keys(argRecord).length;
+  const argSuffix = argCount === 0
+    ? theme.fg("muted", " (no args)")
+    : theme.fg("muted", ` (${argCount} ${pluralize(argCount, "arg")})`);
+  return new Text(
+    `${theme.fg("toolTitle", theme.bold(toolName))}${argSuffix}`,
+    0,
+    0,
+  );
+}
+
+function renderCustomToolResult(
+  result: { content?: Array<{ type: string; text?: string }>; details?: unknown },
+  options: ToolRenderResultOptions,
+  config: ToolDisplayConfig,
+  outputMode: CustomToolOverrideConfig["outputMode"],
+  theme: RenderTheme,
+): Text {
+  return renderMcpResult(
+    result as { content: Array<{ type: string; text?: string }>; details?: unknown },
+    options,
+    { ...config, mcpOutputMode: outputMode },
+    theme,
+  );
+}
+
 function getAdapterKind(tool: RuntimeToolDefinition, adapter: ToolDisplayAdapter): ToolDisplayKind {
   if (adapter.kind) {
     return adapter.kind;
@@ -1945,10 +2067,70 @@ export function registerToolDisplayOverrides(
     });
   }, { deferUntilBuiltinOwner: true });
 
+  const wrappedCustomToolNames = new Set<string>();
+  registerCleanup(() => wrappedCustomToolNames.clear());
+
+  const getCustomOverrideForCandidate = (candidate: unknown): {
+    toolName: string;
+    override: CustomToolOverrideConfig;
+  } | undefined => {
+    const toolName = getTextField(candidate, "name");
+    if (!toolName) {
+      return undefined;
+    }
+
+    const override = getRuntimeCustomToolOverride(toolName, getConfig());
+    if (!override?.enabled) {
+      return undefined;
+    }
+
+    return { toolName, override };
+  };
+
+  const decorateCustomToolOverrideCandidate = (candidate: unknown): boolean => {
+    const customOverride = getCustomOverrideForCandidate(candidate);
+    if (!customOverride || wrappedCustomToolNames.has(customOverride.toolName)) {
+      return customOverride !== undefined;
+    }
+
+    const { toolName, override } = customOverride;
+    const runtimeTool = candidate as RuntimeToolDefinition;
+    applyToolDisplayDecorationInPlace(
+      runtimeTool,
+      toolDisplayApi,
+      {
+        kind: override.kind,
+        overrideExistingRenderers: true,
+        renderCall(args, theme) {
+          if (override.kind === "mcp") {
+            return formatMcpCallLine("mcp", "MCP Proxy", toRecord(args), theme);
+          }
+          return formatGenericToolCallLine(toolName, args, theme);
+        },
+        renderResult(result, options, theme) {
+          return renderCustomToolResult(
+            result as { content?: Array<{ type: string; text?: string }>; details?: unknown },
+            options,
+            getConfig(),
+            override.outputMode,
+            theme,
+          );
+        },
+      },
+    );
+
+    wrappedCustomToolNames.add(toolName);
+    return true;
+  };
+
   const wrappedMcpToolNames = new Set<string>();
   registerCleanup(() => wrappedMcpToolNames.clear());
 
   const decorateMcpToolCandidate = (candidate: unknown): void => {
+    if (getCustomOverrideForCandidate(candidate)) {
+      return;
+    }
+
     if (!isMcpToolCandidate(candidate)) {
       return;
     }
@@ -1989,6 +2171,7 @@ export function registerToolDisplayOverrides(
       toolDisplayApi,
       {
         kind: "mcp",
+        overrideExistingRenderers: true,
         renderCall(args, theme) {
           return formatMcpCallLine(toolName, toolLabel, toRecord(args), theme);
         },
@@ -2028,9 +2211,11 @@ export function registerToolDisplayOverrides(
     ): void {
       originalRegisterTool.call(this, tool);
       try {
-        decorateMcpToolCandidate(tool);
+        if (!decorateCustomToolOverrideCandidate(tool)) {
+          decorateMcpToolCandidate(tool);
+        }
       } catch (error) {
-        logToolDisplayDebug("MCP tool registration decoration failed.", error);
+        logToolDisplayDebug("Tool display registration decoration failed.", error);
       }
     } as ExtensionAPI["registerTool"];
 
@@ -2063,7 +2248,28 @@ export function registerToolDisplayOverrides(
     }
 
     for (const candidate of allTools) {
-      decorateMcpToolCandidate(candidate);
+      if (!decorateCustomToolOverrideCandidate(candidate)) {
+        decorateMcpToolCandidate(candidate);
+      }
+    }
+  };
+
+  const mcpDiscoveryRetryTimers = new Set<ReturnType<typeof setTimeout> & { unref?: () => void }>();
+  registerCleanup(() => {
+    for (const timer of mcpDiscoveryRetryTimers) {
+      clearTimeout(timer);
+    }
+    mcpDiscoveryRetryTimers.clear();
+  });
+
+  const scheduleMcpToolOverrideDiscovery = (): void => {
+    for (const delayMs of [25, 75, 150, 300]) {
+      const timer = setTimeout(() => {
+        mcpDiscoveryRetryTimers.delete(timer);
+        registerMcpToolOverrides();
+      }, delayMs) as ReturnType<typeof setTimeout> & { unref?: () => void };
+      mcpDiscoveryRetryTimers.add(timer);
+      timer.unref?.();
     }
   };
 
@@ -2071,10 +2277,12 @@ export function registerToolDisplayOverrides(
     clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
     registerDeferredBuiltInToolOverrides();
     registerMcpToolOverrides();
+    scheduleMcpToolOverrideDiscovery();
   });
   pi.on("before_agent_start", async () => {
     clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
     registerDeferredBuiltInToolOverrides();
     registerMcpToolOverrides();
+    scheduleMcpToolOverrideDiscovery();
   });
 }

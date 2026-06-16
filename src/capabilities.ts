@@ -24,7 +24,7 @@ function hasMcpTooling(pi: ExtensionAPI): boolean {
 function hasRtkCommand(pi: ExtensionAPI): boolean {
 	try {
 		const commands = pi.getCommands();
-		return commands.some((command) => command.name === "rtk" || command.name.startsWith("rtk-"));
+		return commands.some((command) => typeof command.name === "string" && (command.name === "rtk" || command.name.startsWith("rtk-")));
 	} catch (error) {
 		logToolDisplayDebug("RTK command capability detection failed.", error);
 		return false;
@@ -79,7 +79,7 @@ export function applyCapabilityConfigGuards(
 	return {
 		...config,
 		registerToolOverrides: { ...config.registerToolOverrides },
-		mcpOutputMode: capabilities.hasMcpTooling ? config.mcpOutputMode : "hidden",
+		mcpOutputMode: config.mcpOutputMode,
 		showRtkCompactionHints: capabilities.hasRtkOptimizer ? config.showRtkCompactionHints : false,
 	};
 }

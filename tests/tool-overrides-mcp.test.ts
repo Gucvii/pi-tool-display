@@ -100,6 +100,10 @@ function createTheme(): RenderThemeLike {
 	};
 }
 
+function renderToText(component: unknown): string {
+	return (component as { render: (width: number) => string[] }).render(120).map((line) => line.trimEnd()).join("\n").trim();
+}
+
 // ─── isMcpToolCandidate Unit Tests ───────────────────────────────────────────
 
 test("isMcpToolCandidate returns true when name is 'mcp'", () => {
@@ -126,10 +130,19 @@ test("isMcpToolCandidate returns false for false positives (tool with 'mcp' in d
 	assert.equal(isMcpToolCandidate({ name: "mcp_manager", description: "Manage mcp connections" }), true); // whole word
 });
 
-test("isMcpToolCandidate returns false for false negatives (actual MCP tool without 'mcp' in description)", () => {
-	// If a tool is actually an MCP wrapper but doesn't mention "mcp" in its description,
-	// isMcpToolCandidate will return false — this is a known limitation
-	assert.equal(isMcpToolCandidate({ name: "exa_web_search", description: "Search the web for current information" }), false);
+test("isMcpToolCandidate recognises pi-mcp-adapter direct tools through sourceInfo", () => {
+	assert.equal(
+		isMcpToolCandidate({
+			name: "xcodebuild_list_sims",
+			description: "List available iOS simulators.",
+			parameters: {},
+			sourceInfo: {
+				source: "local",
+				path: "C:/Users/Administrator/.pi/agent/extensions/pi-mcp-adapter/index.ts",
+			},
+		}),
+		true,
+	);
 });
 
 test("isMcpToolCandidate returns false when description is undefined", () => {
@@ -276,15 +289,13 @@ test("MCP tool registered AFTER session_start but BEFORE before_agent_start gets
 	);
 });
 
-test("MCP tool registered AFTER both session_start and before_agent_start is NOT decorated", async () => {
+test("MCP tool discovered after both session_start and before_agent_start is decorated by delayed discovery", async () => {
 	const { api, runtimeTools, eventHandlers } = createExtensionApiStub([]);
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
 
-	// Full lifecycle completes
 	await runLifecycle(eventHandlers);
 
-	// Another extension registers an MCP tool after the lifecycle
 	const veryLateMcpTool: RuntimeTool = {
 		name: "very_late_mcp",
 		description: "A tool using MCP protocol registered after lifecycle.",
@@ -293,11 +304,12 @@ test("MCP tool registered AFTER both session_start and before_agent_start is NOT
 	};
 	runtimeTools.push(veryLateMcpTool);
 
-	// No lifecycle event to trigger decoration — tool stays un-decorated
+	await new Promise((resolve) => setTimeout(resolve, 80));
+
 	assert.equal(
 		typeof veryLateMcpTool.renderCall,
-		"undefined",
-		"tool registered after full lifecycle should not be decorated",
+		"function",
+		"tool discovered after full lifecycle should be decorated by retry discovery",
 	);
 });
 
@@ -352,8 +364,32 @@ test("MCP renderCall shows server:tool when both tool and server args are presen
 	await runLifecycle(eventHandlers);
 
 	const component = mcpTool.renderCall!({ tool: "read_file", server: "filesystem" }, createTheme());
-	const rendered = (component as { render: (w: number) => string[] }).render(120).map(l => l.trimEnd()).join("\n").trim();
-	assert.equal(rendered, "MCP call filesystem:read_file (2 args)");
+	assert.equal(renderToText(component), "MCP call filesystem:read_file (2 args)");
+});
+
+// ─── Existing MCP Adapter Renderers ──────────────────────────────────────────
+
+test("pi-mcp-adapter tools with existing renderers are overridden by MCP display decoration", async () => {
+	const config = buildConfig({ mcpOutputMode: "summary" });
+	const mcpTool: RuntimeTool = {
+		name: "mcp",
+		label: "MCP",
+		description: "MCP gateway - connect to MCP servers and call their tools",
+		parameters: {},
+		execute: () => {},
+		renderCall: () => ({ render: () => ["RAW MCP CALL"] }),
+		renderResult: () => ({ render: () => ["RAW MCP RESULT"] }),
+	};
+	const { api, eventHandlers } = createExtensionApiStub([mcpTool]);
+
+	registerToolDisplayOverrides(api, () => config);
+	await runLifecycle(eventHandlers);
+
+	const callText = renderToText(mcpTool.renderCall!({ tool: "read_file", server: "filesystem" }, createTheme()));
+	const resultText = renderToText(mcpTool.renderResult!({ content: [{ type: "text", text: "line 1\nline 2" }] }, { expanded: false }, createTheme()));
+
+	assert.equal(callText, "MCP call filesystem:read_file (2 args)");
+	assert.equal(resultText, "↳ 2 lines returned • Ctrl+O to expand");
 });
 
 // ─── Prompt Metadata ─────────────────────────────────────────────────────────

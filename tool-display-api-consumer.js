@@ -36,5 +36,5 @@ export function decorateToolForDisplay(tool, adapter, options = {}) {
 }
 
 export function decorateMcpToolForDisplay(tool) {
-  return decorateToolForDisplay(tool, { kind: "mcp" });
+  return decorateToolForDisplay(tool, { kind: "mcp", overrideExistingRenderers: true });
 }

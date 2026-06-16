@@ -1,6 +1,8 @@
 export const READ_OUTPUT_MODES = ["hidden", "summary", "preview"] as const;
 export const SEARCH_OUTPUT_MODES = ["hidden", "count", "preview"] as const;
 export const MCP_OUTPUT_MODES = ["hidden", "summary", "preview"] as const;
+export const CUSTOM_TOOL_OVERRIDE_KINDS = ["generic", "mcp"] as const;
+export const CUSTOM_TOOL_OUTPUT_MODES = ["hidden", "summary", "preview"] as const;
 export const BASH_OUTPUT_MODES = ["opencode", "summary", "preview"] as const;
 export const DIFF_VIEW_MODES = ["auto", "split", "unified"] as const;
 export const DIFF_INDICATOR_MODES = ["bars", "classic", "none"] as const;
@@ -8,6 +10,8 @@ export const DIFF_INDICATOR_MODES = ["bars", "classic", "none"] as const;
 export type ReadOutputMode = (typeof READ_OUTPUT_MODES)[number];
 export type SearchOutputMode = (typeof SEARCH_OUTPUT_MODES)[number];
 export type McpOutputMode = (typeof MCP_OUTPUT_MODES)[number];
+export type CustomToolOverrideKind = (typeof CUSTOM_TOOL_OVERRIDE_KINDS)[number];
+export type CustomToolOutputMode = (typeof CUSTOM_TOOL_OUTPUT_MODES)[number];
 export type BashOutputMode = (typeof BASH_OUTPUT_MODES)[number];
 export type DiffViewMode = (typeof DIFF_VIEW_MODES)[number];
 export type DiffIndicatorMode = (typeof DIFF_INDICATOR_MODES)[number];
@@ -34,8 +38,15 @@ export interface ToolOverrideOwnership {
 	write: boolean;
 }
 
+export interface CustomToolOverrideConfig {
+	enabled: boolean;
+	kind: CustomToolOverrideKind;
+	outputMode: CustomToolOutputMode;
+}
+
 export interface ToolDisplayConfig {
 	registerToolOverrides: ToolOverrideOwnership;
+	customToolOverrides: Record<string, CustomToolOverrideConfig>;
 	enableNativeUserMessageBox: boolean;
 	readOutputMode: ReadOutputMode;
 	searchOutputMode: SearchOutputMode;
@@ -63,6 +74,7 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 		edit: true,
 		write: true,
 	},
+	customToolOverrides: {},
 	enableNativeUserMessageBox: true,
 	readOutputMode: "hidden",
 	searchOutputMode: "hidden",

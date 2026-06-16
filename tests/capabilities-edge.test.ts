@@ -208,13 +208,13 @@ test("no false positive when both commands and path are absent", () => {
 	});
 });
 
-test("applyCapabilityConfigGuards hides MCP output when MCP unavailable", () => {
+test("applyCapabilityConfigGuards preserves MCP output when MCP may appear dynamically", () => {
 	const guarded = applyCapabilityConfigGuards(
 		{ ...DEFAULT_TOOL_DISPLAY_CONFIG, mcpOutputMode: "preview" },
 		{ hasMcpTooling: false, hasRtkOptimizer: true },
 	);
 
-	assert.equal(guarded.mcpOutputMode, "hidden");
+	assert.equal(guarded.mcpOutputMode, "preview");
 	assert.equal(guarded.showRtkCompactionHints, DEFAULT_TOOL_DISPLAY_CONFIG.showRtkCompactionHints);
 });
 
