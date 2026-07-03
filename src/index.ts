@@ -33,6 +33,11 @@ function ownershipChanged(
 }
 
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
+  const initial = loadToolDisplayConfig();
+  if (!initial.config.enabled) {
+    return;
+  }
+
   resetDisposed();
 
   pi.on("session_shutdown", (event: { reason: string }) => {
@@ -41,7 +46,6 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     }
   });
 
-  const initial = loadToolDisplayConfig();
   let config: ToolDisplayConfig = initial.config;
   let pendingLoadError = initial.error;
   let capabilities: ToolDisplayCapabilities = {
@@ -86,15 +90,8 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   pi.registerCommand("tool-display", {
     description: "Configure tool output rendering (OpenCode-style)",
     handler: async (args, ctx) => {
-      const { handleToolDisplayArgs, openSettingsModal } = await import("./config-modal.js");
-      if (handleToolDisplayArgs(args, ctx, { getConfig, setConfig, getCapabilities })) {
-        return;
-      }
-      if (!ctx.hasUI) {
-        ctx.ui.notify("/tool-display requires interactive TUI mode.", "warning");
-        return;
-      }
-      await openSettingsModal(ctx, { getConfig, setConfig, getCapabilities });
+      const { runToolDisplayCommandHandler } = await import("./config-modal.js");
+      await runToolDisplayCommandHandler(args, ctx, { getConfig, setConfig, getCapabilities });
     },
   });
 

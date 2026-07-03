@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import {
   UserMessageComponent,
@@ -210,35 +211,30 @@ test("2: re-registered tools have renderCall and renderResult functions after re
   }
 });
 
-test("2: deferred tool overrides (read/edit/grep) register after before_agent_start on reload", async () => {
+test("2: built-in tool overrides register before lifecycle events and re-register on reload", async () => {
   const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 
-  // First call
   registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
   const firstImmediate = registeredTools.map((t) => t.name);
 
-  // Deferred tools should not be registered yet
-  assert.equal(firstImmediate.includes("read"), false);
-  assert.equal(firstImmediate.includes("edit"), false);
-  assert.equal(firstImmediate.includes("grep"), false);
+  for (const toolName of ["read", "edit", "grep", "bash"] as const) {
+    assert.ok(firstImmediate.includes(toolName), `${toolName} registered before lifecycle events`);
+  }
 
-  // Trigger deferred registration
+  const countBeforeLifecycle = registeredTools.length;
   await eventHandlers.before_agent_start?.();
-  const afterFirstDeferred = registeredTools.map((t) => t.name);
-  assert.ok(afterFirstDeferred.includes("read"), "read registered after before_agent_start");
-  assert.ok(afterFirstDeferred.includes("edit"), "edit registered after before_agent_start");
+  assert.equal(
+    registeredTools.length,
+    countBeforeLifecycle,
+    "before_agent_start does not duplicate already registered built-ins",
+  );
 
-  // Simulate reload: call again
   registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  const beforeSecondTrigger = registeredTools.length;
-
-  // Trigger deferred registration again
-  await eventHandlers.before_agent_start?.();
-  const afterSecondDeferred = registeredTools.length;
+  const countAfterReload = registeredTools.length;
 
   assert.ok(
-    afterSecondDeferred > beforeSecondTrigger,
-    "deferred tools re-register on reloaded before_agent_start",
+    countAfterReload >= countBeforeLifecycle + 7,
+    "built-in display overrides re-register during reload initialization",
   );
 });
 
@@ -981,34 +977,39 @@ test("11: each tool override call clones parameters independently", () => {
 // ---------------------------------------------------------------------------
 
 test("12: config-store reloads config on fingerprint change between calls", () => {
-  const initialResult = loadToolDisplayConfig();
+  const configUrl = new URL("../config.json", import.meta.url);
+  const originalConfigJson = readFileSync(configUrl, "utf8");
 
-  // Config is cached, but if we change the file, fingerprint changes.
-  // Since we can't easily change the file in a test, verify that:
-  // - Loading returns a valid config
-  // - The config has expected defaults
-  assert.ok(initialResult.config, "config loaded successfully");
-  assert.equal(
-    initialResult.config.readOutputMode,
-    DEFAULT_TOOL_DISPLAY_CONFIG.readOutputMode,
-  );
-  assert.equal(
-    initialResult.config.searchOutputMode,
-    DEFAULT_TOOL_DISPLAY_CONFIG.searchOutputMode,
-  );
+  try {
+    const initialResult = loadToolDisplayConfig();
 
-  // saveToolDisplayConfig clears the cache, forcing a re-read
-  const saveResult = saveToolDisplayConfig(initialResult.config);
-  assert.ok(saveResult.success, "config saved successfully (cache cleared)");
+    // Config is cached, but if we change the file, fingerprint changes.
+    // Since local extension config can intentionally differ from defaults,
+    // verify loading returns a valid config and save/reload preserves it.
+    assert.ok(initialResult.config, "config loaded successfully");
+    assert.equal(typeof initialResult.config.readOutputMode, "string");
+    assert.equal(typeof initialResult.config.searchOutputMode, "string");
 
-  // After save, cache is cleared. Next load re-reads from disk.
-  const afterSaveResult = loadToolDisplayConfig();
-  assert.ok(afterSaveResult.config, "config re-loaded after cache clear");
-  assert.equal(
-    afterSaveResult.config.readOutputMode,
-    initialResult.config.readOutputMode,
-    "re-loaded config matches saved config",
-  );
+    // saveToolDisplayConfig clears the cache, forcing a re-read
+    const saveResult = saveToolDisplayConfig(initialResult.config);
+    assert.ok(saveResult.success, "config saved successfully (cache cleared)");
+
+    // After save, cache is cleared. Next load re-reads from disk.
+    const afterSaveResult = loadToolDisplayConfig();
+    assert.ok(afterSaveResult.config, "config re-loaded after cache clear");
+    assert.equal(
+      afterSaveResult.config.readOutputMode,
+      initialResult.config.readOutputMode,
+      "re-loaded read output mode matches saved config",
+    );
+    assert.equal(
+      afterSaveResult.config.searchOutputMode,
+      initialResult.config.searchOutputMode,
+      "re-loaded search output mode matches saved config",
+    );
+  } finally {
+    writeFileSync(configUrl, originalConfigJson, "utf8");
+  }
 });
 
 test("12: extension loads config fresh on each call (no stale cache)", () => {
