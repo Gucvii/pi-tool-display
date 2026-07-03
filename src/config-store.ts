@@ -82,7 +82,7 @@ function toDiffIndicatorMode(value: unknown): ToolDisplayConfig["diffIndicatorMo
 		: DEFAULT_TOOL_DISPLAY_CONFIG.diffIndicatorMode;
 }
 
-function cloneCustomToolOverrides(
+export function cloneCustomToolOverrides(
 	overrides: Record<string, CustomToolOverrideConfig>,
 ): Record<string, CustomToolOverrideConfig> {
 	return Object.fromEntries(
@@ -146,19 +146,19 @@ function isBuiltInToolOverrideName(toolName: string): boolean {
 	return (BUILT_IN_TOOL_OVERRIDE_NAMES as readonly string[]).includes(toolName);
 }
 
-function toCustomToolOverrideKind(value: unknown): CustomToolOverrideConfig["kind"] {
+export function toCustomToolOverrideKind(value: unknown): CustomToolOverrideConfig["kind"] {
 	return CUSTOM_TOOL_OVERRIDE_KINDS.includes(value as CustomToolOverrideConfig["kind"])
 		? (value as CustomToolOverrideConfig["kind"])
 		: "generic";
 }
 
-function toCustomToolOutputMode(value: unknown): CustomToolOverrideConfig["outputMode"] {
+export function toCustomToolOutputMode(value: unknown): CustomToolOverrideConfig["outputMode"] {
 	return CUSTOM_TOOL_OUTPUT_MODES.includes(value as CustomToolOverrideConfig["outputMode"])
 		? (value as CustomToolOverrideConfig["outputMode"])
 		: "summary";
 }
 
-function normalizeCustomToolOverrideEntry(rawEntry: unknown): CustomToolOverrideConfig | undefined {
+export function normalizeCustomToolOverrideEntry(rawEntry: unknown): CustomToolOverrideConfig | undefined {
 	if (typeof rawEntry === "boolean") {
 		return {
 			enabled: rawEntry,
@@ -205,6 +205,7 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 		typeof raw === "object" && raw !== null ? (raw as LegacyToolDisplayConfigSource) : ({} as LegacyToolDisplayConfigSource);
 
 	return {
+		enabled: toBoolean(source.enabled, DEFAULT_TOOL_DISPLAY_CONFIG.enabled),
 		registerToolOverrides: normalizeToolOverrideOwnership(
 			source.registerToolOverrides,
 			source.registerReadToolOverride,
@@ -285,8 +286,9 @@ export function saveToolDisplayConfig(config: ToolDisplayConfig, configFile = CO
 			if (existsSync(tmpFile)) {
 				unlinkSync(tmpFile);
 			}
-		} catch {
+		} catch (cleanupError) {
 			// Ignore cleanup errors.
+			void cleanupError;
 		}
 		const message = error instanceof Error ? error.message : String(error);
 		return {

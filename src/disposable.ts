@@ -19,7 +19,7 @@ export function disposeAll(): void {
   isDisposed = true;
   // Run in reverse order (LIFO)
   for (let i = cleanupCallbacks.length - 1; i >= 0; i--) {
-    try { cleanupCallbacks[i](); } catch { /* ignore */ }
+    try { cleanupCallbacks[i](); } catch (cleanupError) { void cleanupError; }
   }
   cleanupCallbacks = [];
 }

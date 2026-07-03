@@ -9,6 +9,7 @@ import {
 } from "./user-message-box-renderer.js";
 import { unregisterUserMessageRenderPrototypePatch } from "./user-message-box-patch.js";
 import type { ToolDisplayConfig } from "./types.js";
+import { onReloadShutdown } from "./extension-lifecycle.js";
 
 const registeredNativeUserMessageApis = new WeakSet<ExtensionAPI>();
 
@@ -47,12 +48,10 @@ export default function registerNativeUserMessageBox(
 
   patchUserMessageRender(getTheme, isEnabled);
 
-  pi.on("session_shutdown", async (event: { reason?: string }) => {
-    if (event?.reason === "reload") {
-      restoreUserMessageRender();
-      activeTheme = undefined;
-      registeredNativeUserMessageApis.delete(pi);
-    }
+  onReloadShutdown(pi, () => {
+    restoreUserMessageRender();
+    activeTheme = undefined;
+    registeredNativeUserMessageApis.delete(pi);
   });
 
   pi.on("before_agent_start", async () => {

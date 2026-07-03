@@ -436,12 +436,8 @@ export async function openSettingsModal(ctx: ExtensionCommandContext, controller
 			);
 
 			return {
-				render(width: number) {
-					return modal.renderModal(width).lines;
-				},
-				invalidate() {
-					modal.invalidate();
-				},
+				render: (width: number) => modal.renderModal(width).lines,
+				invalidate: () => modal.invalidate(),
 				handleInput(data: string) {
 					modal.handleInput(data);
 					tui.requestRender();
@@ -491,20 +487,28 @@ export function handleToolDisplayArgs(args: string, ctx: ExtensionCommandContext
 	return true;
 }
 
+export async function runToolDisplayCommandHandler(
+	args: string,
+	ctx: ExtensionCommandContext,
+	controller: ToolDisplayConfigController,
+): Promise<void> {
+	if (handleToolDisplayArgs(args, ctx, controller)) {
+		return;
+	}
+
+	if (!ctx.hasUI) {
+		ctx.ui.notify("/tool-display requires interactive TUI mode.", "warning");
+		return;
+	}
+
+	await openSettingsModal(ctx, controller);
+}
+
 export function registerToolDisplayCommand(pi: ExtensionAPI, controller: ToolDisplayConfigController): void {
 	pi.registerCommand("tool-display", {
 		description: "Configure tool output rendering (OpenCode-style)",
 		handler: async (args, ctx) => {
-			if (handleToolDisplayArgs(args, ctx, controller)) {
-				return;
-			}
-
-			if (!ctx.hasUI) {
-				ctx.ui.notify("/tool-display requires interactive TUI mode.", "warning");
-				return;
-			}
-
-			await openSettingsModal(ctx, controller);
+			await runToolDisplayCommandHandler(args, ctx, controller);
 		},
 	});
 }

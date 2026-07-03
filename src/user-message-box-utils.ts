@@ -45,14 +45,16 @@ export function applyUserMessageBackground(
     if (typeof theme.getBgAnsi === "function") {
       return `${theme.getBgAnsi(USER_MESSAGE_BACKGROUND)}${sanitized}${ANSI_BG_RESET}`;
     }
-  } catch {
+  } catch (themeError) {
+    void themeError;
   }
 
   try {
     if (typeof theme.bg === "function") {
       return theme.bg(USER_MESSAGE_BACKGROUND, sanitized);
     }
-  } catch {
+  } catch (themeError) {
+    void themeError;
   }
 
   return sanitized;

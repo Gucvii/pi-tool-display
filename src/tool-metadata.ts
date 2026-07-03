@@ -12,12 +12,16 @@ export const MCP_PROXY_PROMPT_GUIDELINES = [
 	"Use mcp for MCP discovery first: search by capability, describe one exact tool, then call it.",
 ] as const;
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function toRecord(value: unknown): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
+	if (!isRecord(value)) {
 		return {};
 	}
 
-	return value as Record<string, unknown>;
+	return value;
 }
 
 export function getTextField(value: unknown, field: string): string | undefined {

@@ -96,11 +96,15 @@ function colorUserBackground(
   return applyUserMessageBackground(theme, text);
 }
 
+function computeBoxInnerWidth(totalWidth: number): number {
+  return Math.max(0, totalWidth - 2);
+}
+
 function buildTopBorder(
   totalWidth: number,
   theme: UserMessageTheme | undefined,
 ): string {
-  const innerWidth = Math.max(0, totalWidth - 2);
+  const innerWidth = computeBoxInnerWidth(totalWidth);
   const title = truncateToWidth(TITLE_TEXT, innerWidth, "");
   const fill = "─".repeat(Math.max(0, innerWidth - visibleWidth(title)));
   const row = `${colorBorder(theme, "╭")}${colorTitle(theme, title)}${colorBorder(theme, `${fill}╮`)}`;
@@ -112,7 +116,7 @@ function buildBottomBorder(
   totalWidth: number,
   theme: UserMessageTheme | undefined,
 ): string {
-  const innerWidth = Math.max(0, totalWidth - 2);
+  const innerWidth = computeBoxInnerWidth(totalWidth);
   const row = `${colorBorder(theme, "╰")}${colorBorder(theme, `${"─".repeat(innerWidth)}╯`)}`;
 
   return colorUserBackground(theme, row);
@@ -317,7 +321,7 @@ function renderUserMessageBodyLines(
   originalBodyLineCache?: WeakMap<object, CachedUserMessageBodyLines>,
 ): string[] {
   if (typeof instance !== "object" || instance === null) {
-    return originalRender.call(instance, innerWidth);
+    return originalRender.call(instance, innerWidth) as string[];
   }
 
   if (!markdownState) {
@@ -326,13 +330,13 @@ function renderUserMessageBodyLines(
       return cached.lines;
     }
 
-    const lines = originalRender.call(instance, innerWidth);
+    const lines = originalRender.call(instance, innerWidth) as string[];
     originalBodyLineCache?.set(instance, { width: innerWidth, lines });
     return lines;
   }
 
   if (shouldBypassUserMessageMarkdownRebuild(markdownState)) {
-    return originalRender.call(instance, innerWidth);
+    return originalRender.call(instance, innerWidth) as string[];
   }
 
   try {
@@ -342,7 +346,7 @@ function renderUserMessageBodyLines(
       innerWidth,
     );
   } catch {
-    return originalRender.call(instance, innerWidth);
+    return originalRender.call(instance, innerWidth) as string[];
   }
 }
 
@@ -361,7 +365,7 @@ export function patchNativeUserMessagePrototype(
       function renderWithNativeUserBorder(width: number): string[] {
         const safeWidth = Math.max(0, Math.floor(width));
         if (!isEnabled() || safeWidth < MIN_BORDER_WIDTH) {
-          return originalRender.call(this, safeWidth);
+          return originalRender.call(this, safeWidth) as string[];
         }
 
         const canCacheFinalOutput = typeof this === "object" && this !== null;
@@ -369,12 +373,12 @@ export function patchNativeUserMessagePrototype(
           ? extractUserMessageMarkdownState(this as { children?: unknown[] })
           : undefined;
         if (markdownState && shouldBypassUserMessageMarkdownRebuild(markdownState)) {
-          return originalRender.call(this, safeWidth);
+          return originalRender.call(this, safeWidth) as string[];
         }
 
         const theme = getTheme();
         if (canCacheFinalOutput) {
-          const cached = finalOutputCache.get(this);
+          const cached = finalOutputCache.get(this as object);
           if (cached && hasSameFinalOutputState(cached, safeWidth, theme, markdownState)) {
             return cached.output;
           }
@@ -404,7 +408,7 @@ export function patchNativeUserMessagePrototype(
 
         if (canCacheFinalOutput) {
           finalOutputCache.set(
-            this,
+            this as object,
             toFinalOutputCacheEntry(safeWidth, theme, markdownState, output),
           );
         }

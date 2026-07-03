@@ -1,3 +1,4 @@
+import { cloneCustomToolOverrides } from "./config-store.js";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type CustomToolOverrideConfig, type ToolDisplayConfig } from "./types.js";
 
 export const TOOL_DISPLAY_PRESETS = ["opencode", "balanced", "verbose"] as const;
@@ -37,17 +38,6 @@ function toolOverrideOwnershipEqual(a: ToolDisplayConfig, b: ToolDisplayConfig):
 		a.registerToolOverrides.bash === b.registerToolOverrides.bash &&
 		a.registerToolOverrides.edit === b.registerToolOverrides.edit &&
 		a.registerToolOverrides.write === b.registerToolOverrides.write
-	);
-}
-
-function cloneCustomToolOverrides(
-	overrides: Record<string, CustomToolOverrideConfig>,
-): Record<string, CustomToolOverrideConfig> {
-	return Object.fromEntries(
-		Object.entries(overrides).map(([toolName, override]) => [
-			toolName,
-			{ ...override },
-		]),
 	);
 }
 

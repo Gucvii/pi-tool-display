@@ -132,8 +132,9 @@ export function createToolDisplayDebugLogger(options: ToolDisplayDebugLoggerOpti
           () => appendLine(line),
         );
         void writeQueue.catch(() => undefined);
-      } catch {
+      } catch (logError) {
         // Debug logging must never affect extension behavior.
+        void logError;
       }
     },
     flush(): Promise<void> {
