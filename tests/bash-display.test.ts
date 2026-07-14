@@ -202,7 +202,7 @@ test("renderBashCall shows spinner when executionStarted and isPartial are true"
 	}
 });
 
-test("renderBashCall spinner animates frame index over time via setInterval", async () => {
+test("renderBashCall spinner animates frame index over time via setTimeout chain", async () => {
 	const state: Record<string, unknown> = {};
 	let invalidateCount = 0;
 	const { text, stop } = createSpinningBashCall(
@@ -214,8 +214,8 @@ test("renderBashCall spinner animates frame index over time via setInterval", as
 		const frame0 = renderedText(text);
 		assert.match(frame0, /^⠋/);
 
-		// Wait for at least one interval tick (200ms interval)
-		await new Promise((r) => setTimeout(r, 250));
+		// Wait for at least one timer tick (800ms interval)
+		await new Promise((r) => setTimeout(r, 900));
 
 		const frame1 = renderedText(text);
 		assert.notEqual(frame1, frame0, "spinner frame should advance");
@@ -318,7 +318,7 @@ test("renderBashCall creates spinner state when state is an array (arrays are ob
 	// Clean up the interval set on the array
 	const spyState = (stateArray as unknown as Record<string, unknown>)[BASH_SPINNER_STATE_KEY] as Record<string, unknown> | undefined;
 	if (spyState?.timer) {
-		clearInterval(spyState.timer as ReturnType<typeof setInterval>);
+		clearTimeout(spyState.timer as ReturnType<typeof setTimeout>);
 	}
 });
 

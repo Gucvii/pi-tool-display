@@ -242,25 +242,25 @@ test("2: built-in tool overrides register before lifecycle events and re-registe
 // 3. Bash override cleanup (spinner timer)
 // ---------------------------------------------------------------------------
 
-test("3: bash spinner interval is created during partial execution and cleared on completion", () => {
-  const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
+test("3: bash spinner timer is created during partial execution and cleared on completion", () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
 
-  const createdIntervals: ReturnType<typeof setInterval>[] = [];
-  const clearedIntervals: ReturnType<typeof setInterval>[] = [];
+  const createdTimers: ReturnType<typeof setTimeout>[] = [];
+  const clearedTimers: ReturnType<typeof setTimeout>[] = [];
 
-  // Mock setInterval to track creations
-  globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
-    const id = originalSetInterval(fn as (...args: unknown[]) => unknown, ms ?? 0);
-    createdIntervals.push(id);
+  // Mock setTimeout to track creations
+  globalThis.setTimeout = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
+    const id = originalSetTimeout(fn as (...args: unknown[]) => unknown, ms ?? 0);
+    createdTimers.push(id);
     return id;
-  }) as typeof globalThis.setInterval;
+  }) as typeof globalThis.setTimeout;
 
-  // Mock clearInterval to track clearings
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    clearedIntervals.push(id);
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
+  // Mock clearTimeout to track clearings
+  globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+    clearedTimers.push(id);
+    originalClearTimeout(id);
+  }) as typeof globalThis.clearTimeout;
 
   try {
     // Render context that triggers spinner
@@ -281,8 +281,8 @@ test("3: bash spinner interval is created during partial execution and cleared o
     );
     assert.ok(result1 instanceof Text, "renderBashCall returns a Text");
     assert.ok(
-      createdIntervals.length > 0,
-      "spinner interval was created during partial execution",
+      createdTimers.length > 0,
+      "spinner timer was created during partial execution",
     );
 
     // Simulate execution completing (reload-like: context becomes non-partial)
@@ -294,42 +294,42 @@ test("3: bash spinner interval is created during partial execution and cleared o
     );
     assert.ok(result2 instanceof Text, "renderBashCall still returns Text");
     assert.ok(
-      clearedIntervals.length > 0,
-      "spinner interval was cleared on execution completion",
+      clearedTimers.length > 0,
+      "spinner timer was cleared on execution completion",
     );
 
-    // Verify the created interval was also cleared
-    const allCreatedCleared = createdIntervals.every((id) =>
-      clearedIntervals.includes(id),
+    // Verify the created timer was also cleared
+    const allCreatedCleared = createdTimers.every((id) =>
+      clearedTimers.includes(id),
     );
-    assert.ok(allCreatedCleared, "all created spinner intervals were cleared");
+    assert.ok(allCreatedCleared, "all created spinner timers were cleared");
   } finally {
-    globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
-    // Clean up any remaining intervals
-    for (const id of createdIntervals) {
-      if (!clearedIntervals.includes(id)) {
-        originalClearInterval(id);
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+    // Clean up any remaining timers
+    for (const id of createdTimers) {
+      if (!clearedTimers.includes(id)) {
+        originalClearTimeout(id);
       }
     }
   }
 });
 
 test("3: multiple consecutive bash render calls do not create duplicate timers", () => {
-  const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
 
-  const createdIntervals: ReturnType<typeof setInterval>[] = [];
+  const createdTimers: ReturnType<typeof setTimeout>[] = [];
 
-  globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
-    const id = originalSetInterval(fn, ms ?? 0);
-    createdIntervals.push(id);
+  globalThis.setTimeout = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
+    const id = originalSetTimeout(fn, ms ?? 0);
+    createdTimers.push(id);
     return id;
-  }) as typeof globalThis.setInterval;
+  }) as typeof globalThis.setTimeout;
 
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
+  globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+    originalClearTimeout(id);
+  }) as typeof globalThis.clearTimeout;
 
   try {
     const textComponent = new Text("", 0, 0);
@@ -343,10 +343,10 @@ test("3: multiple consecutive bash render calls do not create duplicate timers",
 
     // Call renderBashCall multiple times - should only create ONE timer
     renderBashCall({ command: "test" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
-    const afterFirst = createdIntervals.length;
+    const afterFirst = createdTimers.length;
 
     renderBashCall({ command: "test" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
-    const afterSecond = createdIntervals.length;
+    const afterSecond = createdTimers.length;
 
     // The timer should only be created once (guarded by spinnerState.timer check)
     assert.equal(
@@ -359,8 +359,8 @@ test("3: multiple consecutive bash render calls do not create duplicate timers",
     context.isPartial = false;
     renderBashCall({ command: "test" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
   } finally {
-    globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
   }
 });
 
@@ -751,21 +751,21 @@ test("9: calling toolDisplayExtension three times (double reload) is safe", () =
   }
 });
 
-test("9: no duplicate setInterval across rapid reload-like scenarios", () => {
-  const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
+test("9: no duplicate setTimeout across rapid reload-like scenarios", () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
 
-  const createdIntervals: ReturnType<typeof setInterval>[] = [];
+  const createdTimers: ReturnType<typeof setTimeout>[] = [];
 
-  globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
-    const id = originalSetInterval(fn, ms ?? 0);
-    createdIntervals.push(id);
+  globalThis.setTimeout = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
+    const id = originalSetTimeout(fn, ms ?? 0);
+    createdTimers.push(id);
     return id;
-  }) as typeof globalThis.setInterval;
+  }) as typeof globalThis.setTimeout;
 
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
+  globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+    originalClearTimeout(id);
+  }) as typeof globalThis.clearTimeout;
 
   try {
     // Create two independent contexts (simulating two rapid calls)
@@ -790,7 +790,7 @@ test("9: no duplicate setInterval across rapid reload-like scenarios", () => {
     renderBashCall({ command: "test" }, stubTheme, ctx2 as unknown as Parameters<typeof renderBashCall>[2]);
 
     // Each context should get its own timer
-    assert.equal(createdIntervals.length, 2, "two contexts = two timers");
+    assert.equal(createdTimers.length, 2, "two contexts = two timers");
 
     // Clean up both
     ctx1.isPartial = false;
@@ -798,10 +798,10 @@ test("9: no duplicate setInterval across rapid reload-like scenarios", () => {
     renderBashCall({ command: "test" }, stubTheme, ctx1 as unknown as Parameters<typeof renderBashCall>[2]);
     renderBashCall({ command: "test" }, stubTheme, ctx2 as unknown as Parameters<typeof renderBashCall>[2]);
   } finally {
-    globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
-    for (const id of createdIntervals) {
-      originalClearInterval(id);
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+    for (const id of createdTimers) {
+      originalClearTimeout(id);
     }
   }
 });
@@ -811,22 +811,22 @@ test("9: no duplicate setInterval across rapid reload-like scenarios", () => {
 // ---------------------------------------------------------------------------
 
 test("10: active bash spinner timer is cleaned up when execution transitions from partial to complete", () => {
-  const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
 
-  const createdIntervals: ReturnType<typeof setInterval>[] = [];
-  const clearedIntervals: ReturnType<typeof setInterval>[] = [];
+  const createdTimers: ReturnType<typeof setTimeout>[] = [];
+  const clearedTimers: ReturnType<typeof setTimeout>[] = [];
 
-  globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
-    const id = originalSetInterval(fn, ms ?? 0);
-    createdIntervals.push(id);
+  globalThis.setTimeout = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
+    const id = originalSetTimeout(fn, ms ?? 0);
+    createdTimers.push(id);
     return id;
-  }) as typeof globalThis.setInterval;
+  }) as typeof globalThis.setTimeout;
 
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    clearedIntervals.push(id);
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
+  globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+    clearedTimers.push(id);
+    originalClearTimeout(id);
+  }) as typeof globalThis.clearTimeout;
 
   try {
     const textComponent = new Text("", 0, 0);
@@ -840,7 +840,7 @@ test("10: active bash spinner timer is cleaned up when execution transitions fro
 
     // Start spinner (mid-animation)
     renderBashCall({ command: "long-running-task" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
-    assert.equal(createdIntervals.length, 1, "one timer created for spinner");
+    assert.equal(createdTimers.length, 1, "one timer created for spinner");
 
     // Simulate partial reload: execution not started yet in new context
     // (e.g., reload happens while bash is still running)
@@ -856,7 +856,7 @@ test("10: active bash spinner timer is cleaned up when execution transitions fro
     // execution hasn't started
     renderBashCall({ command: "long-running-task" }, stubTheme, newContext as unknown as Parameters<typeof renderBashCall>[2]);
     assert.equal(
-      createdIntervals.length,
+      createdTimers.length,
       1,
       "no new timer for non-executing context",
     );
@@ -867,15 +867,15 @@ test("10: active bash spinner timer is cleaned up when execution transitions fro
 
     // Original timer should have been cleared
     assert.ok(
-      clearedIntervals.length > 0,
+      clearedTimers.length > 0,
       "original spinner timer cleared on completion",
     );
   } finally {
-    globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
-    for (const id of createdIntervals) {
-      if (!clearedIntervals.includes(id)) {
-        originalClearInterval(id);
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+    for (const id of createdTimers) {
+      if (!clearedTimers.includes(id)) {
+        originalClearTimeout(id);
       }
     }
   }

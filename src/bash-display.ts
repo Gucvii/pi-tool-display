@@ -1,8 +1,8 @@
 import { Text } from "@earendil-works/pi-tui";
-import { registerCleanup, registerTimer } from "./disposable.js";
+import { registerCleanup } from "./disposable.js";
 
 const BASH_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
-const BASH_SPINNER_INTERVAL_MS = 200;
+const BASH_SPINNER_INTERVAL_MS = 800;
 const BASH_SPINNER_STATE_KEY = "__piToolDisplayBashSpinner";
 const BASH_SPINNER_TOOL_CALL_ID_KEY = "__piToolDisplayBashSpinnerToolCallId";
 
@@ -21,7 +21,8 @@ interface BashCallRenderTheme {
 interface BashSpinnerState {
 	frameIndex: number;
 	startedAt?: number;
-	timer?: ReturnType<typeof setInterval>;
+	timer?: ReturnType<typeof setTimeout>;
+	completed?: boolean;
 }
 
 interface BashSpinnerStateCarrier {
@@ -91,7 +92,7 @@ function stopSpinner(toolCallId: string | undefined, state: BashSpinnerState | u
 	}
 
 	if (state.timer) {
-		clearInterval(state.timer);
+		clearTimeout(state.timer);
 		state.timer = undefined;
 	}
 	state.frameIndex = 0;
@@ -173,6 +174,7 @@ export function renderBashCall(
 	const shouldSpin = context.executionStarted && context.isPartial;
 
 	if (!shouldSpin) {
+		if (spinnerState) spinnerState.completed = true;
 		stopSpinner(toolCallId, spinnerState);
 		text.setText(buildBashCallText(args, theme));
 		return text;
@@ -181,7 +183,11 @@ export function renderBashCall(
 	if (spinnerState) {
 		spinnerState.startedAt ??= Date.now();
 		if (!spinnerState.timer && typeof context.invalidate === "function") {
-			const timer = setInterval(() => {
+			const tick = () => {
+				if (spinnerState.completed) {
+					return;
+				}
+
 				spinnerState.frameIndex = (spinnerState.frameIndex + 1) % BASH_SPINNER_FRAMES.length;
 				text.setText(
 					buildBashCallText(
@@ -191,10 +197,12 @@ export function renderBashCall(
 						Date.now() - (spinnerState.startedAt ?? Date.now()),
 					),
 				);
-				context.invalidate?.();
-			}, BASH_SPINNER_INTERVAL_MS);
-			spinnerState.timer = timer;
-			registerTimer(timer);
+				if (spinnerStatesByToolCallId.get(toolCallId || "") === spinnerState && !spinnerState.completed) {
+					context.invalidate?.();
+					spinnerState.timer = setTimeout(tick, BASH_SPINNER_INTERVAL_MS);
+				}
+			};
+			spinnerState.timer = setTimeout(tick, BASH_SPINNER_INTERVAL_MS);
 			registerCleanup(() => {
 				if (spinnerStatesByToolCallId.get(toolCallId || "") === spinnerState) {
 					stopSpinner(toolCallId, spinnerState);
