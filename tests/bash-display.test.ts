@@ -202,22 +202,26 @@ test("renderBashCall shows spinner when executionStarted and isPartial are true"
 	}
 });
 
-test("renderBashCall spinner advances frame index in memory via setTimeout chain", async () => {
+test("renderBashCall spinner advances frame index via timer without touching text", async () => {
 	const state: Record<string, unknown> = {};
 	const { text, stop } = createSpinningBashCall(
 		{ command: "npm test" },
 		state,
 	);
 	try {
-		const frame0 = renderedText(text);
-		assert.match(frame0, /^⠋/);
+		assert.match(renderedText(text), /^⠋/);
 
 		// Wait for at least one timer tick (800ms interval)
 		await new Promise((r) => setTimeout(r, 900));
 
-		const frame1 = renderedText(text);
-		assert.notEqual(frame1, frame0, "spinner frame should advance in memory");
-		assert.match(frame1, /^⠙/);
+		// Timer advances frameIndex in memory; text is only set on renderCall
+		const spinnerState = (state as Record<string, unknown>)[BASH_SPINNER_STATE_KEY] as
+			{ frameIndex: number } | undefined;
+		assert.ok(spinnerState, "spinner state should exist");
+		assert.equal(spinnerState!.frameIndex, 1, "frameIndex should advance to 1");
+
+		// Text component stays at initial frame until renderCall updates it
+		assert.match(renderedText(text), /^⠋/, "text should not change without renderCall");
 	} finally {
 		stop();
 	}

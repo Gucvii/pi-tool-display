@@ -189,14 +189,6 @@ export function renderBashCall(
 				}
 
 				spinnerState.frameIndex = (spinnerState.frameIndex + 1) % BASH_SPINNER_FRAMES.length;
-				text.setText(
-					buildBashCallText(
-						args,
-						theme,
-						BASH_SPINNER_FRAMES[spinnerState.frameIndex],
-						Date.now() - (spinnerState.startedAt ?? Date.now()),
-					),
-				);
 				if (spinnerStatesByToolCallId.get(toolCallId || "") === spinnerState && !spinnerState.completed) {
 					spinnerState.timer = setTimeout(tick, BASH_SPINNER_INTERVAL_MS);
 				}
