@@ -198,7 +198,6 @@ export function renderBashCall(
 					),
 				);
 				if (spinnerStatesByToolCallId.get(toolCallId || "") === spinnerState && !spinnerState.completed) {
-					context.invalidate?.();
 					spinnerState.timer = setTimeout(tick, BASH_SPINNER_INTERVAL_MS);
 				}
 			};
