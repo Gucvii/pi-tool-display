@@ -2116,6 +2116,5 @@ export function registerToolDisplayOverrides(
   pi.on("before_agent_start", async () => {
     clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
     registerMcpToolOverrides();
-    scheduleMcpToolOverrideDiscovery();
   });
 }
